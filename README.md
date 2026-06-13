@@ -78,13 +78,27 @@ Run the keepalive job directly:
 python -m keepalive.gpu_keepalive --device cuda:0 --matrix-size 4096 --work-seconds 0.2 --sleep-seconds 2
 ```
 
-For temporary SSH-based testing, you can use `nohup`:
+For environments without `systemd`, such as some containers, WSL sessions, or
+test shells, use `nohup`:
 
 ```bash
-nohup python main.py > watchdog.log 2>&1 &
+nohup python3 main.py --config config.yaml > watchdog.log 2>&1 &
 ```
 
-For production, use `systemd` instead.
+Check the process and logs:
+
+```bash
+ps aux | grep '[m]ain.py'
+tail -f watchdog.log
+```
+
+Stop the watchdog:
+
+```bash
+pkill -f 'python3 main.py --config config.yaml'
+```
+
+For production on a host booted with `systemd`, use the service file below.
 
 ## Training Exit Classification
 
@@ -173,7 +187,16 @@ If the GPU is still not recognized as active by your resource monitor, increase 
 
 ## systemd
 
-An example unit file is available at `systemd/gpu-watchdog.service`.
+An example unit file is available at `systemd/gpu-watchdog.service`. Use this
+only on a host where `systemd` is running as PID 1.
+
+If `systemctl` prints this error, the current environment does not support
+`systemd`; use the `nohup` command above instead.
+
+```bash
+System has not been booted with systemd as init system (PID 1). Can't operate.
+Failed to connect to bus: Host is down
+```
 
 ```bash
 sudo cp systemd/gpu-watchdog.service /etc/systemd/system/
