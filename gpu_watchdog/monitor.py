@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
+import os
 import time
 
-from gpu_watchdog.config import WatchdogConfig
+from gpu_watchdog.config import TrainingJobConfig, WatchdogConfig
 from gpu_watchdog.gpu import get_max_gpu_utilization
 from gpu_watchdog.keepalive import is_process_running, start_keepalive
 from gpu_watchdog.slack import SlackNotifier, format_alert
@@ -23,18 +24,19 @@ class Watchdog:
 
     def check_once(self) -> WatchdogState:
         state = load_state(self.config.state_path)
-        training_alive = is_training_alive(self.config.training.patterns)
+        training_jobs_alive = self._read_training_jobs_alive()
+        training_alive = any(training_jobs_alive.values())
         max_gpu_utilization = self._read_gpu_utilization()
 
         self._update_idle_seconds(state, max_gpu_utilization)
-        self._notify_training_transition(state, training_alive)
+        self._notify_training_transitions(state, training_jobs_alive)
         self._ensure_keepalive_if_needed(state, training_alive, max_gpu_utilization)
 
         if state.keepalive_pid and not is_process_running(state.keepalive_pid):
             LOGGER.info("Recorded keepalive PID is no longer running: %s", state.keepalive_pid)
             state.keepalive_pid = None
 
-        state.last_training_alive = training_alive
+        state.training_jobs = training_jobs_alive
         save_state(self.config.state_path, state)
         return state
 
@@ -57,6 +59,15 @@ class Watchdog:
         LOGGER.info("Max GPU utilization: %s%%", utilization)
         return utilization
 
+    def _read_training_jobs_alive(self) -> dict[str, bool]:
+        jobs_alive: dict[str, bool] = {}
+        for job in self.config.training_jobs:
+            alive = is_training_alive(job.patterns)
+            jobs_alive[job.name] = alive
+            LOGGER.info("Training job status: name=%s alive=%s", job.name, alive)
+
+        return jobs_alive
+
     def _update_idle_seconds(
         self,
         state: WatchdogState,
@@ -71,32 +82,39 @@ class Watchdog:
 
         state.idle_seconds = 0
 
-    def _notify_training_transition(
+    def _notify_training_transitions(
         self,
         state: WatchdogState,
-        training_alive: bool,
+        training_jobs_alive: dict[str, bool],
     ) -> None:
-        if state.last_training_alive is not True or training_alive:
-            return
+        for job in self.config.training_jobs:
+            training_alive = training_jobs_alive.get(job.name, False)
+            last_training_alive = state.training_jobs.get(job.name)
+            if last_training_alive is not True or training_alive:
+                continue
 
+            self._notify_training_job_finished(state, job)
+
+    def _notify_training_job_finished(
+        self, state: WatchdogState, job: TrainingJobConfig
+    ) -> None:
         finished_status = classify_finished_training(
-            self.config.training.success_marker_path,
-            self.config.training.failure_marker_path,
+            job.success_marker_path,
+            job.failure_marker_path,
         )
-
         if finished_status == "completed":
-            state.last_event = "training_completed"
+            state.last_event = f"training_completed:{job.name}"
             if self.config.slack.notify_on_training_completed:
                 self._send_alert(
                     "Training completed successfully.",
-                    "Keepalive job will be started.",
+                    f"Training job: {job.name}",
                 )
             return
 
-        state.last_event = f"training_{finished_status}"
+        state.last_event = f"training_{finished_status}:{job.name}"
         self._send_alert(
             "Training process stopped unexpectedly.",
-            "Keepalive job will be started.",
+            f"Training job: {job.name}\nStatus: {finished_status}",
         )
 
     def _ensure_keepalive_if_needed(
@@ -156,7 +174,10 @@ class Watchdog:
 
     def _send_alert(self, title: str, body: str) -> None:
         timestamp = datetime.now(timezone.utc).isoformat()
-        message = format_alert(title, f"Time: {timestamp}\n{body}")
+        session_name = self.config.session_name or os.getenv(
+            self.config.session_name_env_var
+        )
+        message = format_alert(title, f"Time: {timestamp}\n{body}", session_name)
 
         try:
             sent = self.notifier.send(message)

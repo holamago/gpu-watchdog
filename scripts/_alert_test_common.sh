@@ -52,12 +52,14 @@ write_config() {
 check_interval_seconds: 1
 idle_threshold_minutes: 9999
 state_path: "$STATE_PATH"
+session_name: alert-test-session
 
-training:
-  patterns:
-    - "$TRAINING_PATTERN"
-  success_marker_path: "$SUCCESS_MARKER"
-  failure_marker_path: "$FAILURE_MARKER"
+training_jobs:
+  - name: alert-test-training
+    patterns:
+      - "$TRAINING_PATTERN"
+    success_marker_path: "$SUCCESS_MARKER"
+    failure_marker_path: "$FAILURE_MARKER"
 
 gpu:
   nvidia_smi_path: nvidia-smi

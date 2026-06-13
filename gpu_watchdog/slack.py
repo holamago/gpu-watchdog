@@ -27,10 +27,12 @@ class SlackNotifier:
         return True
 
 
-def format_alert(title: str, body: str) -> str:
+def format_alert(title: str, body: str, session_name: str | None = None) -> str:
+    session_line = f"Session: {session_name}\n" if session_name else ""
     return (
         f"[GPU Watchdog] {title}\n\n"
         f"Host: {socket.gethostname()}\n"
+        f"{session_line}"
         f"{body}"
     )
 

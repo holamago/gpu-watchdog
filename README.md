@@ -1,14 +1,16 @@
 # gpu-watchdog
 
-Python watchdog for GPU training jobs. It monitors a training process, checks GPU utilization, starts a keepalive job when needed, and sends Slack alerts for important events.
+Python watchdog for GPU training jobs. It monitors one user/session, tracks one
+or more training jobs in that session, checks GPU utilization, starts a
+keepalive job when needed, and sends Slack alerts for important events.
 
 ## Features
 
-- Detects training processes by command-line patterns such as `accelerate launch` or `train.py`.
+- Tracks multiple training jobs independently by command-line patterns.
 - Reads GPU utilization with `nvidia-smi`.
-- Starts a keepalive job when the training process disappears.
+- Starts a keepalive job when no configured training job is running.
 - Starts a keepalive job when training is alive but the GPU stays idle for too long.
-- Sends Slack alerts for training completion, unexpected training stops, and keepalive startup failures.
+- Sends Slack alerts for per-job training completion, unexpected training stops, and keepalive startup failures.
 - Persists runtime state in `state.json` so the watchdog can continue after restart.
 
 ## Install
@@ -28,13 +30,20 @@ The default configuration lives in `config.yaml`.
 ```yaml
 check_interval_seconds: 60
 idle_threshold_minutes: 300
+state_path: state.json
+session_name:
+session_name_env_var: GPU_WATCHDOG_NAME
 
-training:
-  patterns:
-    - "accelerate launch"
-    - "train.py"
+training_jobs:
+  - name: default-training
+    patterns:
+      - "accelerate launch"
+      - "train.py"
+    success_marker_path:
+    failure_marker_path:
 
 gpu:
+  nvidia_smi_path: nvidia-smi
   idle_utilization_threshold: 1
 
 keepalive:
@@ -57,6 +66,60 @@ Use an environment variable for the Slack webhook instead of committing the URL 
 ```bash
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
 ```
+
+Use `GPU_WATCHDOG_NAME` to make Slack alerts identify the session or user. This
+is especially useful when multiple cloud sessions send alerts to the same Slack
+channel.
+
+```bash
+export GPU_WATCHDOG_NAME="user-a-session-001"
+```
+
+## Multiple Training Jobs
+
+Run one watchdog per user/session. Inside that session, configure every training
+job that should be tracked independently under `training_jobs`.
+
+Each job needs:
+
+- `name`: Unique name used in Slack alerts and state tracking.
+- `patterns`: Command-line fragments that identify that training process.
+- `success_marker_path`: File written by that job when training finishes successfully.
+- `failure_marker_path`: File written by that job when training fails.
+
+Example for one session with two GPUs and two independent training processes:
+
+```yaml
+session_name: user-a-session-001
+state_path: /tmp/gpu-watchdog/user-a-session-001/state.json
+
+training_jobs:
+  - name: train-gpu0
+    patterns:
+      - "train.py --run-name train-gpu0"
+    success_marker_path: /tmp/gpu-watchdog/user-a-session-001/train-gpu0/success
+    failure_marker_path: /tmp/gpu-watchdog/user-a-session-001/train-gpu0/failed
+
+  - name: train-gpu1
+    patterns:
+      - "train.py --run-name train-gpu1"
+    success_marker_path: /tmp/gpu-watchdog/user-a-session-001/train-gpu1/success
+    failure_marker_path: /tmp/gpu-watchdog/user-a-session-001/train-gpu1/failed
+
+keepalive:
+  log_path: /tmp/gpu-watchdog/user-a-session-001/keepalive.log
+```
+
+Start the training jobs with command lines that include the configured pattern:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python3 train.py --run-name train-gpu0
+CUDA_VISIBLE_DEVICES=1 python3 train.py --run-name train-gpu1
+```
+
+The watchdog sends completion/failure alerts per job. Keepalive is still decided
+for the whole session: it starts when none of the configured jobs is running, or
+when the session's visible GPUs stay idle longer than `idle_threshold_minutes`.
 
 ## Run
 
@@ -102,27 +165,50 @@ For production on a host booted with `systemd`, use the service file below.
 
 ## Training Exit Classification
 
-When the watchdog only observes an external process by PID pattern, it cannot read that process exit code directly. To distinguish successful completion from an unexpected stop, have your training script write marker files and configure them in `config.yaml`.
+The watchdog observes external processes by command-line pattern, so it cannot
+read each training process exit code directly. To distinguish successful
+completion from an unexpected stop, each training job must write marker files
+and `config.yaml` must point to those files.
+
+Without marker paths, or if neither marker exists when a previously running job
+disappears, the watchdog treats that job as an unexpected stop.
+
+For this job config:
 
 ```yaml
-training:
-  success_marker_path: /tmp/training-success
-  failure_marker_path: /tmp/training-failed
+training_jobs:
+  - name: train-gpu0
+    patterns:
+      - "train.py --run-name train-gpu0"
+    success_marker_path: /tmp/gpu-watchdog/user-a-session-001/train-gpu0/success
+    failure_marker_path: /tmp/gpu-watchdog/user-a-session-001/train-gpu0/failed
 ```
 
-Example:
+wrap the training entry point like this:
 
 ```python
 from pathlib import Path
 
+job_dir = Path("/tmp/gpu-watchdog/user-a-session-001/train-gpu0")
+success_marker = job_dir / "success"
+failure_marker = job_dir / "failed"
+
+job_dir.mkdir(parents=True, exist_ok=True)
+success_marker.unlink(missing_ok=True)
+failure_marker.unlink(missing_ok=True)
+
 try:
     train()
 except Exception:
-    Path("/tmp/training-failed").touch()
+    failure_marker.touch()
     raise
 else:
-    Path("/tmp/training-success").touch()
+    success_marker.touch()
 ```
+
+If you run two jobs in one session, repeat the same wrapper with a different
+job directory for each job. The marker paths must match that job's
+`success_marker_path` and `failure_marker_path` exactly.
 
 ## Slack Test
 

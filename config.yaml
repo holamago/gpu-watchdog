@@ -1,15 +1,18 @@
 check_interval_seconds: 60
 idle_threshold_minutes: 300
 state_path: state.json
+session_name:
+session_name_env_var: GPU_WATCHDOG_NAME
 
-training:
-  patterns:
-    - "accelerate launch"
-    - "train.py"
-  # Optional marker files written by your training script.
-  # If omitted, a disappeared training process is treated as unexpected.
-  success_marker_path:
-  failure_marker_path:
+training_jobs:
+  - name: default-training
+    patterns:
+      - "accelerate launch"
+      - "train.py"
+    # Marker files must be written by your training script if you want the
+    # watchdog to distinguish successful completion from an unexpected stop.
+    success_marker_path:
+    failure_marker_path:
 
 gpu:
   nvidia_smi_path: nvidia-smi
