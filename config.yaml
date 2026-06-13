@@ -1,0 +1,42 @@
+check_interval_seconds: 60
+idle_threshold_minutes: 300
+state_path: state.json
+
+training:
+  patterns:
+    - "accelerate launch"
+    - "train.py"
+  # Optional marker files written by your training script.
+  # If omitted, a disappeared training process is treated as unexpected.
+  success_marker_path:
+  failure_marker_path:
+
+gpu:
+  nvidia_smi_path: nvidia-smi
+  idle_utilization_threshold: 1
+
+keepalive:
+  command:
+    - python
+    - -m
+    - keepalive.gpu_keepalive
+    - --device
+    - cuda:0
+    - --matrix-size
+    - "4096"
+    - --work-seconds
+    - "0.2"
+    - --sleep-seconds
+    - "2"
+  log_path: keepalive.log
+  start_grace_seconds: 5
+
+slack:
+  # Prefer setting SLACK_WEBHOOK_URL in the service environment instead of
+  # committing webhook secrets here.
+  webhook_url:
+  webhook_env_var: SLACK_WEBHOOK_URL
+  request_timeout_seconds: 10
+  notify_on_idle_keepalive: false
+  notify_on_training_completed: false
+

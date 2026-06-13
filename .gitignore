@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# GPU watchdog runtime state
+state.json
+keepalive.log
