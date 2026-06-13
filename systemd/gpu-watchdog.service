@@ -1,0 +1,17 @@
+[Unit]
+Description=GPU watchdog service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/work/gpu-watchdog
+Environment=PYTHONUNBUFFERED=1
+Environment=SLACK_WEBHOOK_URL=
+ExecStart=/usr/bin/python3 /home/work/gpu-watchdog/main.py --config /home/work/gpu-watchdog/config.yaml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
