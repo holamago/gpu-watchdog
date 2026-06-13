@@ -21,5 +21,5 @@ stop_fake_training
 echo "Step 3: detect failure and send Slack alert"
 run_watchdog_once
 
-print_done "Training process stopped unexpectedly."
+print_done "⚠️ [GPU Watchdog] Training Stopped"
 

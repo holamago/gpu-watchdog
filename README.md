@@ -240,6 +240,7 @@ Run individual scenarios:
 ./scripts/test_training_completed_alert.sh
 ./scripts/test_training_failed_alert.sh
 ./scripts/test_keepalive_failed_alert.sh
+./scripts/test_gpu_reclaim_risk_alert.sh
 ```
 
 Run all scenarios:
@@ -250,9 +251,10 @@ Run all scenarios:
 
 Expected Slack alerts:
 
-- `Training completed successfully.`
-- `Training process stopped unexpectedly.`
-- `Keepalive job failed.`
+- `✅ [GPU Watchdog] Training Completed`
+- `⚠️ [GPU Watchdog] Training Stopped`
+- `⚠️ [GPU Watchdog] Keepalive Failed`
+- `🚨 [GPU Watchdog] GPU Reclaim Risk Detected`
 
 ## Keepalive Tuning
 
