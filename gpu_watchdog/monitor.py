@@ -9,7 +9,12 @@ import time
 from gpu_watchdog.config import TrainingJobConfig, WatchdogConfig
 from gpu_watchdog.gpu import get_max_gpu_utilization
 from gpu_watchdog.keepalive import is_process_running, start_keepalive
-from gpu_watchdog.slack import SlackNotifier, format_alert
+from gpu_watchdog.slack import (
+    SlackNotifier,
+    format_alert,
+    format_alert_blocks,
+    format_alert_body,
+)
 from gpu_watchdog.state import WatchdogState, load_state, save_state
 from gpu_watchdog.trainer import classify_finished_training, is_training_alive
 
@@ -141,14 +146,10 @@ class Watchdog:
             idle_minutes = state.idle_seconds // 60
             self._send_alert(
                 "⚠️ [GPU Watchdog] GPU Idle Protection Started",
-                (
-                    "Summary:\n"
-                    "Training GPU utilization is below the idle threshold.\n\n"
-                    "Impact:\n"
-                    "Keepalive will run to reduce idle reclaim risk.\n\n"
-                    "Action:\n"
-                    f"Monitor training status. Idle minutes: {idle_minutes}"
-                ),
+                fields=[("Idle Minutes", str(idle_minutes))],
+                sections=[
+                    ("Action", "Keepalive started; monitor training status."),
+                ],
             )
 
         result = start_keepalive(self.config.keepalive, state.keepalive_pid)
@@ -192,24 +193,19 @@ class Watchdog:
     def _send_training_completed_alert(self, job_name: str) -> None:
         self._send_alert(
             "✅ [GPU Watchdog] Training Completed",
-            (
-                f"Job: {job_name}\n\n"
-                "Training finished successfully."
-            ),
+            fields=[("Job", job_name)],
         )
 
     def _send_training_stopped_alert(self, job_name: str, status: str) -> None:
         self._send_alert(
             "⚠️ [GPU Watchdog] Training Stopped",
-            (
-                f"Training: {job_name}\n\n"
-                "Summary:\n"
-                f"Training stopped with status: {status}.\n\n"
-                "Impact:\n"
-                "The training process is no longer running.\n\n"
-                "Action:\n"
-                "Check training logs and confirm whether this stop was expected."
-            ),
+            fields=[("Training", job_name), ("Status", status)],
+            sections=[
+                (
+                    "Action",
+                    "Check logs and confirm whether this stop was expected.",
+                ),
+            ],
         )
 
     def _send_keepalive_failed_alert(
@@ -217,28 +213,17 @@ class Watchdog:
         failure_reason: str,
         training_alive: bool,
     ) -> None:
-        impact = (
-            "GPU idle protection may not be active."
-            if training_alive
-            else "GPU resources may be reclaimed."
-        )
         action = (
             "Check training status and restart keepalive."
             if training_alive
             else "Check GPU allocation and restart keepalive if resources are still needed."
         )
         self._send_alert(
-            "⚠️ [GPU Watchdog] Keepalive Failed",
-            (
-                "Summary:\n"
-                "Keepalive failed to start.\n\n"
-                "Impact:\n"
-                f"{impact}\n\n"
-                "Reason:\n"
-                f"• {failure_reason}\n\n"
-                "Action:\n"
-                f"{action}"
-            ),
+            "🚨 [GPU Watchdog] Keepalive Failed",
+            sections=[
+                ("Reason", failure_reason),
+                ("Action", action),
+            ],
         )
 
     def _send_gpu_reclaim_risk_alert(
@@ -249,28 +234,34 @@ class Watchdog:
         training_names = ", ".join(event.job_name for event in training_stop_events)
         self._send_alert(
             "🚨 [GPU Watchdog] GPU Reclaim Risk Detected",
-            (
-                f"Training: {training_names}\n\n"
-                "Summary:\n"
-                "Training stopped and keepalive failed.\n\n"
-                "Impact:\n"
-                "GPU resources may be reclaimed.\n\n"
-                "Reason:\n"
-                f"• {failure_reason}\n\n"
-                "Action:\n"
-                "Immediate action required. Check training status and restart keepalive."
-            ),
+            fields=[("Training", training_names)],
+            sections=[
+                ("Reason", failure_reason),
+                (
+                    "Action",
+                    "Check training status and restart keepalive immediately.",
+                ),
+            ],
         )
 
-    def _send_alert(self, title: str, body: str) -> None:
+    def _send_alert(
+        self,
+        title: str,
+        fields: list[tuple[str, str]] | None = None,
+        sections: list[tuple[str, str]] | None = None,
+    ) -> None:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         session_name = self.config.session_name or os.getenv(
             self.config.session_name_env_var
         )
-        message = format_alert(title, f"{body}\nTime: {timestamp}", session_name)
+        alert_fields = [*(fields or []), ("Time", timestamp)]
+        alert_sections = sections or []
+        body = format_alert_body(alert_fields, alert_sections)
+        message = format_alert(title, body, session_name)
+        blocks = format_alert_blocks(title, alert_fields, alert_sections, session_name)
 
         try:
-            sent = self.notifier.send(message)
+            sent = self.notifier.send(message, blocks=blocks)
         except Exception:
             LOGGER.exception("Failed to send Slack alert")
             return

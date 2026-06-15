@@ -12,5 +12,5 @@ echo "Case 3: keepalive failed to start"
 echo "Step 1: run watchdog with no training process and a failing keepalive command"
 run_watchdog_once
 
-print_done "⚠️ [GPU Watchdog] Keepalive Failed"
+print_done "🚨 [GPU Watchdog] Keepalive Failed"
 

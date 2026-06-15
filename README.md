@@ -253,7 +253,7 @@ Expected Slack alerts:
 
 - `✅ [GPU Watchdog] Training Completed`
 - `⚠️ [GPU Watchdog] Training Stopped`
-- `⚠️ [GPU Watchdog] Keepalive Failed`
+- `🚨 [GPU Watchdog] Keepalive Failed`
 - `🚨 [GPU Watchdog] GPU Reclaim Risk Detected`
 
 ## Keepalive Tuning
