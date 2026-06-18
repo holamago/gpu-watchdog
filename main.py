@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import logging
 
+from dotenv import load_dotenv
+
 from gpu_watchdog.config import load_config
 from gpu_watchdog.monitor import Watchdog
 from gpu_watchdog.slack import SlackNotifier
@@ -30,6 +32,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    load_dotenv()
+
     args = parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level),

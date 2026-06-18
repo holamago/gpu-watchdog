@@ -1,4 +1,5 @@
 psutil
+python-dotenv
 PyYAML
 requests
 torch
