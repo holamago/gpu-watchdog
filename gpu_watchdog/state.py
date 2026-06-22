@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import json
+import logging
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -19,8 +23,16 @@ def load_state(path: str | Path) -> WatchdogState:
     if not state_path.exists():
         return WatchdogState()
 
-    with state_path.open("r", encoding="utf-8") as handle:
-        data = json.load(handle)
+    try:
+        with state_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except json.JSONDecodeError as exc:
+        LOGGER.warning(
+            "State file is invalid JSON (%s); resetting to defaults: %s",
+            state_path,
+            exc,
+        )
+        return WatchdogState()
 
     if not isinstance(data, dict):
         raise ValueError("State file must contain a JSON object")
