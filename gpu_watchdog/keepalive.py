@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import logging
 import subprocess
 
 import psutil
 
 from gpu_watchdog.config import KeepaliveConfig
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -40,6 +44,48 @@ def is_process_running(pid: int | None) -> bool:
         return True
     except psutil.NoSuchProcess:
         return False
+
+
+def stop_keepalive(pid: int | None, timeout_seconds: float = 5.0) -> bool:
+    """
+    Stop a recorded keepalive process when training resumes.
+
+    Args:
+        pid: Keepalive PID to stop.
+        timeout_seconds: Seconds to wait before killing the process.
+
+    Returns:
+        True when there is no longer a live process for the PID.
+    """
+    if pid is None:
+        return True
+
+    try:
+        process = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return True
+
+    if not process.is_running():
+        return True
+
+    if process.status() == psutil.STATUS_ZOMBIE:
+        _reap_zombie_process(process)
+        return True
+
+    process.terminate()
+    try:
+        process.wait(timeout=timeout_seconds)
+        return True
+    except psutil.TimeoutExpired:
+        LOGGER.warning("Keepalive did not stop after SIGTERM; killing pid=%s", pid)
+        process.kill()
+        try:
+            process.wait(timeout=timeout_seconds)
+        except psutil.TimeoutExpired:
+            LOGGER.error("Failed to stop keepalive pid=%s", pid)
+            return False
+
+    return True
 
 
 def _reap_zombie_process(process: psutil.Process) -> None:

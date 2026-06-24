@@ -1,7 +1,8 @@
 # gpu-watchdog
 
 Session-scoped GPU training watchdog. It checks training heartbeat files, GPU
-idleness, starts a CUDA keepalive when needed, and sends Slack alerts.
+idleness, starts a CUDA keepalive when needed, stops keepalive when training
+resumes, and sends Slack alerts.
 
 ## Install
 
@@ -84,6 +85,9 @@ For a Moshi fine-tune example, see `docs/examples/moshi-finetune.md`.
 
 - `watchdog.log`: watchdog decisions, GPU reads, Slack errors, keepalive start failures
 - `keepalive.log`: CUDA keepalive worker output, PyTorch/CUDA errors, OOMs
+
+When a training heartbeat becomes alive, the watchdog stops the recorded
+keepalive process so training does not share GPU resources with it.
 
 Common checks:
 

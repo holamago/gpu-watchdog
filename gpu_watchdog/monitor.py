@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from gpu_watchdog.config import TrainingJobConfig, WatchdogConfig
 from gpu_watchdog.gpu import get_max_gpu_utilization
-from gpu_watchdog.keepalive import is_process_running, start_keepalive
+from gpu_watchdog.keepalive import is_process_running, start_keepalive, stop_keepalive
 from gpu_watchdog.slack import (
     SlackNotifier,
     format_alert,
@@ -59,6 +59,7 @@ class Watchdog:
 
         self._update_idle_seconds(state, max_gpu_utilization)
         training_stop_events = self._notify_training_transitions(state, training_jobs_alive)
+        self._stop_keepalive_if_training_resumed(state, training_alive)
         self._ensure_keepalive_if_needed(
             state,
             training_alive,
@@ -120,6 +121,32 @@ class Watchdog:
             )
 
         return jobs_alive
+
+    def _stop_keepalive_if_training_resumed(
+        self,
+        state: WatchdogState,
+        training_alive: bool,
+    ) -> None:
+        """
+        Stop keepalive once a real training heartbeat is alive again.
+        """
+        if not training_alive or state.keepalive_pid is None:
+            return
+
+        keepalive_pid = state.keepalive_pid
+        if stop_keepalive(keepalive_pid):
+            LOGGER.info(
+                "Stopped keepalive because training is alive again. pid=%s",
+                keepalive_pid,
+            )
+            state.keepalive_pid = None
+            state.last_event = "keepalive_stopped:training_alive"
+            return
+
+        LOGGER.warning(
+            "Keepalive is still running after stop attempt. pid=%s",
+            keepalive_pid,
+        )
 
     def _update_idle_seconds(
         self,
