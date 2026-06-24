@@ -1,3 +1,5 @@
+# Copyright (c) 2026- MAGO
+
 from __future__ import annotations
 
 import argparse
@@ -11,6 +13,9 @@ LOGGER = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
+    """
+    Parse command-line arguments for the CUDA keepalive worker.
+    """
     parser = argparse.ArgumentParser(description="Keep CUDA GPUs minimally active.")
     parser.add_argument("--device", default="cuda:0", help="CUDA device to use.")
     parser.add_argument(
@@ -41,6 +46,15 @@ def parse_args() -> argparse.Namespace:
 
 
 def run(device: str, matrix_size: int, sleep_seconds: float, work_seconds: float) -> None:
+    """
+    Run a lightweight CUDA matrix multiplication loop.
+
+    Args:
+        device: CUDA device name, for example "cuda:0".
+        matrix_size: Square matrix size used for each matmul.
+        sleep_seconds: Seconds to sleep between work windows.
+        work_seconds: Seconds to run matmul work in each window.
+    """
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is not available")
     if matrix_size <= 0:
@@ -70,6 +84,7 @@ def run(device: str, matrix_size: int, sleep_seconds: float, work_seconds: float
 
         with torch.no_grad():
             while time.monotonic() < deadline:
+                # Keep allocations stable by reusing the same input tensors.
                 result = torch.matmul(left, right)
                 torch.cuda.synchronize(device)
                 iterations += 1
@@ -80,6 +95,9 @@ def run(device: str, matrix_size: int, sleep_seconds: float, work_seconds: float
 
 
 def main() -> None:
+    """
+    Run the CUDA keepalive CLI.
+    """
     args = parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level),

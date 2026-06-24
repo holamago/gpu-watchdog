@@ -1,3 +1,5 @@
+# Copyright (c) 2026- MAGO
+
 from __future__ import annotations
 
 import logging
@@ -5,9 +7,19 @@ import subprocess
 
 
 LOGGER = logging.getLogger(__name__)
+UNAVAILABLE_UTILIZATION_VALUES = {"[Not Found]", "N/A", "Not Supported"}
 
 
 def get_gpu_utilizations(nvidia_smi_path: str = "nvidia-smi") -> list[int]:
+    """
+    Read per-GPU utilization percentages from nvidia-smi.
+
+    Args:
+        nvidia_smi_path: Path or command name for nvidia-smi.
+
+    Returns:
+        A list of utilization percentages.
+    """
     output = subprocess.check_output(
         [
             nvidia_smi_path,
@@ -27,7 +39,16 @@ def get_gpu_utilizations(nvidia_smi_path: str = "nvidia-smi") -> list[int]:
         try:
             values.append(int(stripped))
         except ValueError:
-            LOGGER.warning("Skipping non-numeric GPU utilization value: %s", stripped)
+            if stripped in UNAVAILABLE_UTILIZATION_VALUES:
+                LOGGER.debug(
+                    "Skipping unavailable GPU utilization value: %s",
+                    stripped,
+                )
+            else:
+                LOGGER.warning(
+                    "Skipping unexpected GPU utilization value: %s",
+                    stripped,
+                )
 
     if not values:
         raise RuntimeError("nvidia-smi returned no GPU utilization values")
@@ -36,5 +57,8 @@ def get_gpu_utilizations(nvidia_smi_path: str = "nvidia-smi") -> list[int]:
 
 
 def get_max_gpu_utilization(nvidia_smi_path: str = "nvidia-smi") -> int:
+    """
+    Return the highest visible GPU utilization percentage.
+    """
     return max(get_gpu_utilizations(nvidia_smi_path))
 
