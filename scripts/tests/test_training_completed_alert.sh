@@ -22,4 +22,3 @@ echo "Step 3: detect completion and send Slack alert"
 run_watchdog_once
 
 print_done "✅ [GPU Watchdog] Training Completed"
-

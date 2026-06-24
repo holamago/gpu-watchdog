@@ -13,4 +13,3 @@ echo
 
 echo
 echo "All alert test scripts finished. Check Slack for four alert messages."
-
