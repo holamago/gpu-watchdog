@@ -1,18 +1,23 @@
 check_interval_seconds: 60
+
 idle_threshold_minutes: 300
+
+# Default state path is scoped to /tmp/gpu-watchdog/<session>/state.json when
+# GPU_WATCHDOG_NAME is set.
 state_path: state.json
+
+# Leave empty to use GPU_WATCHDOG_NAME for Slack labels and runtime paths.
 session_name:
 session_name_env_var: GPU_WATCHDOG_NAME
 
 training_jobs:
   - name: default-training
-    patterns:
-      - "accelerate launch"
-      - "train.py"
-    # Marker files must be written by your training script if you want the
-    # watchdog to distinguish successful completion from an unexpected stop.
-    success_marker_path:
-    failure_marker_path:
+    # Training must periodically refresh this JSON heartbeat while it is running.
+    heartbeat_path: /tmp/gpu-watchdog/${GPU_WATCHDOG_NAME}/default-training/heartbeat
+    heartbeat_timeout_seconds: 180
+    # Marker files let the watchdog classify completed vs failed/stopped.
+    success_marker_path: /tmp/gpu-watchdog/${GPU_WATCHDOG_NAME}/default-training/success
+    failure_marker_path: /tmp/gpu-watchdog/${GPU_WATCHDOG_NAME}/default-training/failed
 
 gpu:
   nvidia_smi_path: nvidia-smi
@@ -26,11 +31,14 @@ keepalive:
     - --device
     - cuda:0
     - --matrix-size
-    - "4096"
+    - "2048"
     - --work-seconds
     - "0.2"
     - --sleep-seconds
-    - "2"
+    - "5"
+
+  # Default log path is scoped to $GPU_WATCHDOG_LOG_DIR/<session>-keepalive.log
+  # when GPU_WATCHDOG_LOG_DIR is set.
   log_path: keepalive.log
   start_grace_seconds: 5
 
@@ -40,6 +48,12 @@ slack:
   webhook_url:
   webhook_env_var: SLACK_WEBHOOK_URL
   request_timeout_seconds: 10
+
+  # Montreal time. Use an IANA timezone so DST is handled automatically.
+  alert_timezone: America/Toronto
+
+  # Avoid paging every check while keepalive keeps failing.
+  keepalive_failure_alert_interval_seconds: 3600
   notify_on_idle_keepalive: false
-  notify_on_training_completed: false
+  notify_on_training_completed: true
 
